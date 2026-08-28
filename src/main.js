@@ -513,7 +513,7 @@ function renderBlocks(blocks, sectionId = "", starredOnly = false) {
           <div class="code-block">
             <div class="code-topbar">
               <span><i></i><i></i><i></i></span>
-              <small>C++</small>
+              <small>CPP · C++17</small>
               <button data-copy aria-label="Copy code">${icons.copy}<span>Copy</span></button>
             </div>
             <pre><code>${escapeHtml(block.text)}</code></pre>

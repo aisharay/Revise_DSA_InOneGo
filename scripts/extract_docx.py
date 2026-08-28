@@ -16,6 +16,8 @@ from docx.text.paragraph import Paragraph
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
 
+from lld_pattern_overrides import PATTERN_SNIPPETS, TARGET_CATEGORY_PREFIXES
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DSA_SOURCE = Path(r"C:\Users\aisharay\Downloads\1. DSA (2).docx")
@@ -311,6 +313,58 @@ def combine_libraries(dsa: dict[str, Any], lld: dict[str, Any]) -> dict[str, Any
     return {"meta": meta, "categories": dsa["categories"] + lld["categories"]}
 
 
+def apply_lld_pattern_overrides(data: dict[str, Any]) -> None:
+    """Replace extracted pattern fragments while retaining every non-code block."""
+    found: set[str] = set()
+
+    def visit(section: dict[str, Any]) -> None:
+        snippet = PATTERN_SNIPPETS.get(section["id"])
+        if snippet is not None:
+            found.add(section["id"])
+            blocks = section["blocks"]
+            first_code = next(
+                (index for index, block in enumerate(blocks) if block["type"] == "code"),
+                len(blocks),
+            )
+            section["blocks"] = [
+                *[block for block in blocks[:first_code] if block["type"] != "code"],
+                {"type": "code", "text": snippet},
+                *[block for block in blocks[first_code:] if block["type"] != "code"],
+            ]
+        for child in section["children"]:
+            visit(child)
+
+    target_categories = [
+        category
+        for category in data["categories"]
+        if category["id"].startswith(TARGET_CATEGORY_PREFIXES)
+    ]
+    for category in target_categories:
+        for section in category["sections"]:
+            visit(section)
+
+    missing = set(PATTERN_SNIPPETS) - found
+    if missing:
+        raise ValueError(f"LLD pattern overrides reference missing sections: {sorted(missing)}")
+
+    data["meta"]["codeBlocks"] = sum(
+        block["type"] == "code"
+        for category in data["categories"]
+        for block in iter_category_blocks(category)
+    )
+
+
+def iter_category_blocks(category: dict[str, Any]):
+    yield from category["blocks"]
+
+    def visit(nodes: list[dict[str, Any]]):
+        for section in nodes:
+            yield from section["blocks"]
+            yield from visit(section["children"])
+
+    yield from visit(category["sections"])
+
+
 def write_chapter_pages(data: dict[str, Any]) -> None:
     CHAPTERS_DIR.mkdir(parents=True, exist_ok=True)
     category_ids = {category["id"] for category in data["categories"]}
@@ -390,6 +444,7 @@ def main() -> None:
             raise SystemExit(f"Source document not found: {source}")
 
     data = combine_libraries(extract(dsa_source), extract(lld_source))
+    apply_lld_pattern_overrides(data)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(
         json.dumps(data, ensure_ascii=False, separators=(",", ":")),
