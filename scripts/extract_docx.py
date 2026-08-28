@@ -56,11 +56,12 @@ CHAPTER_ORDER = [
 
 CODE_START = re.compile(
     r"^(?:#include|using namespace|template\s*<|class\s+\w|struct\s+\w|"
+    r"(?:[\w:<>,*&]+\s+)+[\w:~]+\s*\(|"
     r"(?:const\s+)?(?:unsigned\s+)?(?:long long|int|bool|void|double|char|string|auto|"
     r"vector|map|unordered_map|set|unordered_set|stack|queue|deque|priority_queue|pair)"
     r"(?:\s*<[^;{}=]+>)?[\s*&]+\w|"
     r"if\s*\(|else(?:\s+if)?\b|for\s*\(|while\s*\(|do\s*\{|switch\s*\(|case\s+|"
-    r"return\b|break\s*;|continue\s*;|public:|private:|protected:|"
+    r"return(?:\s+.+)?;|break\s*;|continue\s*;|public:|private:|protected:|"
     r"\w+(?:::\w+)?\s*\([^)]*\)\s*(?:const\s*)?\{|"
     r"[{}]|//)"
 )
@@ -77,6 +78,11 @@ def clean_text(value: str) -> str:
     value = value.replace("\u00a0", " ").replace("\ufffd", "—")
     value = re.sub(r"[ \t]+", " ", value)
     return "\n".join(line.rstrip() for line in value.splitlines()).strip()
+
+
+def clean_code_text(value: str) -> str:
+    value = value.replace("\u00a0", " ").replace("\ufffd", "—").replace("\t", "    ")
+    return "\n".join(line.rstrip() for line in value.splitlines()).strip("\n")
 
 
 def unique_slug(base: str, used: set[str]) -> str:
@@ -98,9 +104,12 @@ def iter_blocks(document: DocumentObject):
 
 
 def looks_like_code(text: str) -> bool:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    raw_lines = [line for line in text.splitlines() if line.strip()]
+    lines = [line.strip() for line in raw_lines]
     if not lines:
         return False
+    if len(lines) == 1 and re.fullmatch(r"[\)\]\}]+\s*(?:const\s*)?\{?", lines[0]):
+        return True
     if len(lines) == 1 and lines[0].endswith(";"):
         return True
     signals = 0
@@ -114,24 +123,29 @@ def looks_like_code(text: str) -> bool:
     return signals >= max(2, len(lines))
 
 
-def paragraph_block(paragraph: Paragraph) -> dict[str, Any] | None:
-    text = clean_text(paragraph.text)
+def paragraph_block(
+    paragraph: Paragraph, continue_code: bool = False
+) -> dict[str, Any] | None:
+    raw_text = clean_code_text(paragraph.text)
+    text = clean_text(raw_text)
     if not text:
         return None
 
     lowered = text.lower()
-    if looks_like_code(text):
-        kind = "code"
-    elif lowered.startswith("question:"):
+    if lowered.startswith("question:"):
         kind = "question"
     elif lowered.startswith(("time:", "space:", "complexity:", "average time:", "worst time:")):
         kind = "complexity"
     elif lowered.startswith(("important:", "note:", "why?", "key idea:", "observation:")):
         kind = "callout"
+    elif lowered.startswith(("definition:", "explanation:", "👉 explanation:")):
+        kind = "text"
+    elif looks_like_code(raw_text) or continue_code:
+        kind = "code"
     else:
         kind = "text"
 
-    return {"type": kind, "text": text}
+    return {"type": kind, "text": raw_text if kind == "code" else text}
 
 
 def table_block(table: Table) -> dict[str, Any]:
@@ -149,6 +163,19 @@ def append_block(target: list[dict[str, Any]], block: dict[str, Any]) -> None:
         target[-1]["text"] += "\n" + block["text"]
         return
     target.append(block)
+
+
+def continues_code_block(target: list[dict[str, Any]], raw_text: str) -> bool:
+    if not target or target[-1]["type"] != "code":
+        return False
+    previous = target[-1]["text"].rstrip()
+    brace_depth = previous.count("{") - previous.count("}")
+    first_line = next((line for line in raw_text.splitlines() if line.strip()), "")
+    is_indented = len(first_line) - len(first_line.lstrip()) >= 4
+    has_continuation = previous.endswith(
+        ("(", ",", "=", "&&", "||", "+", "-", "*", "/", "<<", ">>")
+    )
+    return brace_depth > 0 or is_indented or has_continuation
 
 
 def extract(source: Path) -> dict[str, Any]:
@@ -209,11 +236,6 @@ def extract(source: Path) -> dict[str, Any]:
                 stack.append(section)
                 continue
 
-            block = paragraph_block(item)
-            if block is None:
-                continue
-            if block["type"] == "question":
-                question_count += 1
             if category is None:
                 category = {
                     "id": unique_slug("dsa-notes", used_ids),
@@ -223,6 +245,11 @@ def extract(source: Path) -> dict[str, Any]:
                 }
                 categories.append(category)
             target = stack[-1]["blocks"] if stack else category["blocks"]
+            block = paragraph_block(item, continues_code_block(target, item.text))
+            if block is None:
+                continue
+            if block["type"] == "question":
+                question_count += 1
             append_block(target, block)
         else:
             table_count += 1
@@ -313,9 +340,35 @@ def combine_libraries(dsa: dict[str, Any], lld: dict[str, Any]) -> dict[str, Any
     return {"meta": meta, "categories": dsa["categories"] + lld["categories"]}
 
 
+def convert_conceptual_blocks(data: dict[str, Any]) -> None:
+    """Render diagrams and conceptual comment lists as notes, not executable C++."""
+
+    def update(block: dict[str, Any]) -> None:
+        if block["type"] != "code":
+            return
+        lines = [line.strip() for line in block["text"].splitlines() if line.strip()]
+        if any(line in {"↓", "↑", "→", "←"} for line in lines):
+            block["type"] = "text"
+            return
+        if lines and all(line.startswith("//") for line in lines):
+            block["type"] = "callout"
+            block["text"] = "\n".join(line.removeprefix("//").strip() for line in lines)
+
+    for category in data["categories"]:
+        for block in iter_category_blocks(category):
+            update(block)
+
+
 def apply_lld_pattern_overrides(data: dict[str, Any]) -> None:
     """Replace extracted pattern fragments while retaining every non-code block."""
     found: set[str] = set()
+
+    def keep_pattern_prose(block: dict[str, Any]) -> bool:
+        if block["type"] == "code":
+            return False
+        if block["type"] != "text":
+            return True
+        return block["text"].startswith(("Definition:", "👉 Explanation:"))
 
     def visit(section: dict[str, Any]) -> None:
         snippet = PATTERN_SNIPPETS.get(section["id"])
@@ -327,9 +380,9 @@ def apply_lld_pattern_overrides(data: dict[str, Any]) -> None:
                 len(blocks),
             )
             section["blocks"] = [
-                *[block for block in blocks[:first_code] if block["type"] != "code"],
+                *[block for block in blocks[:first_code] if keep_pattern_prose(block)],
                 {"type": "code", "text": snippet},
-                *[block for block in blocks[first_code:] if block["type"] != "code"],
+                *[block for block in blocks[first_code:] if keep_pattern_prose(block)],
             ]
         for child in section["children"]:
             visit(child)
@@ -444,6 +497,7 @@ def main() -> None:
             raise SystemExit(f"Source document not found: {source}")
 
     data = combine_libraries(extract(dsa_source), extract(lld_source))
+    convert_conceptual_blocks(data)
     apply_lld_pattern_overrides(data)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(

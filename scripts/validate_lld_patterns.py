@@ -42,15 +42,27 @@ def validate_content() -> None:
 
     errors = []
     for section_id, expected_code in PATTERN_SNIPPETS.items():
+        blocks = target_sections[section_id]["blocks"]
         code_blocks = [
             block["text"]
-            for block in target_sections[section_id]["blocks"]
+            for block in blocks
             if block["type"] == "code"
         ]
         if len(code_blocks) != 1:
             errors.append(f"{section_id}: expected 1 code block, found {len(code_blocks)}")
         elif code_blocks[0] != expected_code:
             errors.append(f"{section_id}: generated code does not match canonical override")
+        unexpected_text = [
+            block["text"]
+            for block in blocks
+            if block["type"] == "text"
+            and not block["text"].startswith(("Definition:", "👉 Explanation:"))
+        ]
+        if unexpected_text:
+            errors.append(
+                f"{section_id}: old code fragments remain outside the canonical block: "
+                f"{unexpected_text}"
+            )
     if errors:
         raise RuntimeError("\n".join(errors))
 
