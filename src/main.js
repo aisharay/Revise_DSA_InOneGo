@@ -93,6 +93,60 @@ function inlineFormat(value = "") {
     .replace(/\n/g, "<br>");
 }
 
+const cppKeywords = new Set([
+  "alignas", "alignof", "and", "asm", "break", "case", "catch", "class",
+  "const", "constexpr", "continue", "default", "delete", "do", "else",
+  "enum", "explicit", "export", "extern", "final", "for", "friend", "if",
+  "inline", "mutable", "namespace", "new", "noexcept", "not", "operator",
+  "override", "private", "protected", "public", "register", "return", "sizeof",
+  "static", "struct", "switch", "template", "this", "throw", "try", "typedef",
+  "typename", "union", "using", "virtual", "volatile", "while",
+]);
+
+const cppTypes = new Set([
+  "auto", "bool", "char", "double", "float", "int", "long", "short", "signed",
+  "unsigned", "void", "size_t", "string", "vector", "array", "deque", "list",
+  "map", "unordered_map", "set", "unordered_set", "stack", "queue",
+  "priority_queue", "pair", "tuple", "unique_ptr", "shared_ptr", "weak_ptr",
+  "optional", "variant", "function", "thread", "mutex", "condition_variable",
+  "future", "promise", "uint32_t", "uint64_t", "int64_t",
+]);
+
+const cppLiterals = new Set(["true", "false", "nullptr", "NULL"]);
+const cppTokenPattern =
+  /^[ \t]*#[^\n]*|\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b(?:0[xX][\da-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[uUlLfF]*)\b|\b[A-Za-z_]\w*\b/gm;
+
+function highlightCpp(source) {
+  let result = "";
+  let cursor = 0;
+  cppTokenPattern.lastIndex = 0;
+
+  for (const match of source.matchAll(cppTokenPattern)) {
+    const token = match[0];
+    result += escapeHtml(source.slice(cursor, match.index));
+    let tokenClass = "";
+    const trimmed = token.trimStart();
+
+    if (trimmed.startsWith("#")) tokenClass = "cpp-preprocessor";
+    else if (token.startsWith("//") || token.startsWith("/*")) tokenClass = "cpp-comment";
+    else if (token.startsWith('"') || token.startsWith("'")) tokenClass = "cpp-string";
+    else if (/^(?:0[xX][\da-fA-F]+|\d)/.test(token)) tokenClass = "cpp-number";
+    else if (cppKeywords.has(token)) tokenClass = "cpp-keyword";
+    else if (cppTypes.has(token)) tokenClass = "cpp-type";
+    else if (cppLiterals.has(token)) tokenClass = "cpp-literal";
+    else if (/^\s*\(/.test(source.slice(match.index + token.length))) {
+      tokenClass = "cpp-function";
+    }
+
+    result += tokenClass
+      ? `<span class="${tokenClass}">${escapeHtml(token)}</span>`
+      : escapeHtml(token);
+    cursor = match.index + token.length;
+  }
+
+  return result + escapeHtml(source.slice(cursor));
+}
+
 function cleanTitle(title) {
   return title
     .replace(/^\d+\.\s*/, "")
@@ -516,7 +570,7 @@ function renderBlocks(blocks, sectionId = "", starredOnly = false) {
               <small>CPP · C++17</small>
               <button data-copy aria-label="Copy code">${icons.copy}<span>Copy</span></button>
             </div>
-            <pre><code>${escapeHtml(block.text)}</code></pre>
+            <pre><code class="language-cpp">${highlightCpp(block.text)}</code></pre>
           </div>
         `;
       }

@@ -984,6 +984,36 @@ pre code {
   tab-size: 2;
 }
 
+.cpp-keyword {
+  color: #c792ea;
+}
+
+.cpp-type {
+  color: #82d8ef;
+}
+
+.cpp-function {
+  color: #82aaff;
+}
+
+.cpp-string {
+  color: #c3e88d;
+}
+
+.cpp-number,
+.cpp-literal {
+  color: #f7b267;
+}
+
+.cpp-comment {
+  color: #69758b;
+  font-style: italic;
+}
+
+.cpp-preprocessor {
+  color: #ffcb6b;
+}
+
 .question-block,
 .callout-block,
 .complexity-block {
