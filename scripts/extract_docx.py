@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 import sys
 from html import escape
 from pathlib import Path
@@ -359,6 +361,41 @@ def convert_conceptual_blocks(data: dict[str, Any]) -> None:
             update(block)
 
 
+def format_dsa_code(data: dict[str, Any]) -> None:
+    """Apply a compact, consistent C++ style to every DSA code block."""
+    formatter = shutil.which("clang-format")
+    if formatter is None:
+        raise RuntimeError(
+            "clang-format is required to generate DSA content. "
+            "Install dependencies with: python -m pip install -r requirements.txt"
+        )
+
+    style = (
+        "{BasedOnStyle: Google, ColumnLimit: 120, IndentWidth: 4, "
+        "ContinuationIndentWidth: 4, AllowShortFunctionsOnASingleLine: Empty, "
+        "BinPackArguments: true, BinPackParameters: true, SortIncludes: Never}"
+    )
+    for category in data["categories"]:
+        if category["library"] != "dsa":
+            continue
+        for block in iter_category_blocks(category):
+            if block["type"] != "code":
+                continue
+            result = subprocess.run(
+                [formatter, f"--style={style}"],
+                input=block["text"],
+                text=True,
+                encoding="utf-8",
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode:
+                raise RuntimeError(
+                    f"clang-format failed in {category['id']}: {result.stderr.strip()}"
+                )
+            block["text"] = result.stdout.rstrip()
+
+
 def apply_lld_pattern_overrides(data: dict[str, Any]) -> None:
     """Replace extracted pattern fragments while retaining every non-code block."""
     found: set[str] = set()
@@ -498,6 +535,7 @@ def main() -> None:
 
     data = combine_libraries(extract(dsa_source), extract(lld_source))
     convert_conceptual_blocks(data)
+    format_dsa_code(data)
     apply_lld_pattern_overrides(data)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(

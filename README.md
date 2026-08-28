@@ -29,6 +29,7 @@ site. The importer also generates one standalone page for every chapter in
 `chapters`.
 
 ```powershell
+python -m pip install -r requirements.txt
 npm run extract
 ```
 
