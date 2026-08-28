@@ -4,6 +4,7 @@ const appBase = new URL("../", import.meta.url).pathname.replace(/\/$/, "");
 const state = {
   data: null,
   categoryId: null,
+  library: document.body.dataset.library || "dsa",
   query: "",
   searchIndex: [],
   completed: new Set(JSON.parse(localStorage.getItem("dsa-completed") || "[]")),
@@ -60,13 +61,21 @@ const categoryIcons = [
   "…",
 ];
 
-const chapterGroups = [
-  { label: "Foundations", start: 0 },
-  { label: "Structures & Patterns", start: 4 },
-  { label: "Trees & Range Queries", start: 12 },
-  { label: "Graphs & Dynamic Programming", start: 16 },
-  { label: "Advanced Topics", start: 19 },
-];
+const chapterGroups = {
+  dsa: [
+    { label: "Foundations", start: 0 },
+    { label: "Structures & Patterns", start: 4 },
+    { label: "Trees & Range Queries", start: 12 },
+    { label: "Graphs & Dynamic Programming", start: 16 },
+    { label: "Advanced Topics", start: 19 },
+  ],
+  lld: [
+    { label: "Quick Start", start: 0 },
+    { label: "Design Patterns", start: 1 },
+    { label: "Interview Designs", start: 6 },
+    { label: "Advanced LLD", start: 24 },
+  ],
+};
 
 function escapeHtml(value = "") {
   return value
@@ -87,6 +96,11 @@ function inlineFormat(value = "") {
 function cleanTitle(title) {
   return title
     .replace(/^\d+\.\s*/, "")
+    .replace(/^phase\s+\d+\s*[-–]\s*/i, "")
+    .replace(/^que\s*[-–]\s*/i, "")
+    .replace(/^que\s+phase\s+\d+\s*[-–]\s*/i, "")
+    .replace(/^que\s*[-–]?\s*/i, "")
+    .replace(/^phase\s+\d+\s*[-–]\s*que\s*[-–]\s*/i, "")
     .replace(/\s+n\s+/i, " & ")
     .replace(/^tab 26$/i, "Advanced DSA Reference")
     .replace(/\blinkedlist\b/i, "Linked Lists")
@@ -119,6 +133,10 @@ function getCategory() {
   );
 }
 
+function getLibraryCategories(library = state.library) {
+  return state.data.categories.filter((category) => category.library === library);
+}
+
 function categoryUrl(categoryId, sectionId = "", starredOnly = false) {
   const query = starredOnly ? "?starred=1" : "";
   const suffix = sectionId ? `#${encodeURIComponent(sectionId)}` : "";
@@ -133,6 +151,7 @@ function buildSearchIndex() {
   state.searchIndex = state.data.categories.flatMap((category) =>
     allSections(category.sections).map((section) => ({
       categoryId: category.id,
+      library: category.library,
       category: cleanTitle(category.title),
       id: section.id,
       title: section.title,
@@ -161,15 +180,21 @@ function progressFor(category) {
 
 function renderShell() {
   const meta = state.data.meta;
+  const activeCategories = getLibraryCategories();
+  const activeSections = activeCategories.reduce(
+    (total, category) => total + allSections(category.sections).length,
+    0,
+  );
+  const activeGroups = chapterGroups[state.library] || [];
   document.documentElement.dataset.theme = state.theme;
   app.innerHTML = `
     <header class="topbar">
       <button class="icon-button mobile-menu" id="menu-button" aria-label="Open navigation">
         ${icons.menu}
       </button>
-      <a class="brand" href="${appBase}/" aria-label="DSA Vault home">
+      <a class="brand" href="${appBase}/" aria-label="Interview Vault home">
         <span class="brand-mark">&lt;/&gt;</span>
-        <span>DSA<span>Vault</span></span>
+        <span>Interview<span>Vault</span></span>
       </a>
       <button class="search-trigger" id="search-trigger">
         ${icons.search}
@@ -177,9 +202,9 @@ function renderShell() {
         <kbd>/</kbd>
       </button>
       <div class="header-meta">
-        <span>${meta.sections} topics</span>
+        <span>${activeSections} ${state.library.toUpperCase()} topics</span>
         <span class="header-dot"></span>
-        <span>${meta.questions} questions</span>
+        <span>${activeCategories.length} chapters</span>
       </div>
       <a class="review-shortcut ${state.view === "starred" ? "active" : ""}" href="${categoryUrl(state.categoryId, "", state.view !== "starred")}">
         ${icons.star}<span>${state.starred.size}</span>
@@ -194,10 +219,23 @@ function renderShell() {
     <div class="layout">
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-head">
-          <p>Library</p>
+          <p>Learning Library</p>
           <button class="icon-button sidebar-close" id="sidebar-close" aria-label="Close navigation">
             ${icons.close}
           </button>
+        </div>
+        <div class="library-switcher">
+          ${meta.libraries
+            .map((library) => {
+              const destination = state.data.categories.find(
+                (category) => category.library === library.id,
+              );
+              return `<a class="${library.id === state.library ? "active" : ""}" href="${categoryUrl(destination.id, "", state.view === "starred")}">
+                <strong>${escapeHtml(library.title)}</strong>
+                <span>${getLibraryCategories(library.id).length}</span>
+              </a>`;
+            })
+            .join("")}
         </div>
         <nav class="category-nav">
           <a class="category-link home-link" href="${appBase}/">
@@ -209,10 +247,10 @@ function renderShell() {
             <span class="category-name">Starred Review</span>
             <span class="starred-count">${state.starred.size}</span>
           </a>
-          ${state.data.categories
+          ${activeCategories
             .map((category, index) => {
               const progress = progressFor(category);
-              const group = chapterGroups.find((item) => item.start === index);
+              const group = activeGroups.find((item) => item.start === index);
               return `
                 ${group ? `<span class="nav-group">${group.label}</span>` : ""}
                 <a class="category-link ${category.id === state.categoryId ? "active" : ""}" href="${categoryUrl(category.id, "", state.view === "starred")}">
@@ -285,7 +323,7 @@ function sectionHasStars(section) {
 
 function renderCategory() {
   const category = getCategory();
-  const categoryIndex = state.data.categories.indexOf(category);
+  const categoryIndex = getLibraryCategories().indexOf(category);
   const progress = progressFor(category);
   const primarySections = category.sections.filter((section) => section.level === 1);
   const visibleSections =
@@ -298,7 +336,7 @@ function renderCategory() {
     <section class="category-hero">
       <div class="hero-grid"></div>
       <div class="hero-copy">
-        <div class="eyebrow"><span>${categoryIcons[categoryIndex] || "•"}</span> Chapter ${String(categoryIndex + 1).padStart(2, "0")}</div>
+        <div class="eyebrow"><span>${categoryIcons[categoryIndex] || "•"}</span> ${state.library.toUpperCase()} · Chapter ${String(categoryIndex + 1).padStart(2, "0")}</div>
         <h1>${escapeHtml(cleanTitle(category.title))}</h1>
         <p>${categoryIntro(cleanTitle(category.title), primarySections.length)}</p>
         <div class="hero-stats">
@@ -310,7 +348,7 @@ function renderCategory() {
       <div class="hero-orbit" aria-hidden="true">
         <span class="orbit orbit-one"></span>
         <span class="orbit orbit-two"></span>
-        <strong>${categoryIcons[categoryIndex] || "DSA"}</strong>
+        <strong>${categoryIcons[categoryIndex] || state.library.toUpperCase()}</strong>
       </div>
     </section>
     ${
@@ -348,7 +386,7 @@ function renderCategory() {
     </div>
     <footer class="content-footer">
       <span>&lt;/&gt;</span>
-      <p>Built as a personal reference for consistent practice.</p>
+      <p>DSA and LLD, organized for consistent interview practice.</p>
     </footer>
   `;
 
@@ -720,7 +758,7 @@ function renderSearch(query) {
             <span class="result-icon">${icons.arrow}</span>
             <span>
               <strong>${escapeHtml(result.title)}</strong>
-              <small>${escapeHtml(result.category)}</small>
+              <small>${escapeHtml(result.library.toUpperCase())} · ${escapeHtml(result.category)}</small>
             </span>
           </button>
         `,
@@ -751,6 +789,7 @@ async function init() {
     )
       ? requestedCategory
       : state.data.categories[0]?.id;
+    state.library = getCategory().library;
     buildSearchIndex();
     renderShell();
   } catch (error) {

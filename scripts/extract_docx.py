@@ -1,4 +1,4 @@
-"""Convert the DSA DOCX handbook into structured JSON for the website."""
+"""Convert the DSA and LLD DOCX handbooks into structured website data."""
 
 from __future__ import annotations
 
@@ -18,7 +18,8 @@ from docx.oxml.text.paragraph import CT_P
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SOURCE = Path(r"C:\Users\aisharay\Downloads\1. DSA (2).docx")
+DEFAULT_DSA_SOURCE = Path(r"C:\Users\aisharay\Downloads\1. DSA (2).docx")
+DEFAULT_LLD_SOURCE = Path(r"C:\Users\aisharay\Downloads\LLD.docx")
 OUTPUT = PROJECT_ROOT / "public" / "data" / "dsa-content.json"
 CHAPTERS_DIR = PROJECT_ROOT / "chapters"
 
@@ -269,6 +270,47 @@ def extract(source: Path) -> dict[str, Any]:
     }
 
 
+def add_library(data: dict[str, Any], library: str, prefix_ids: bool = False) -> None:
+    def update_section(section: dict[str, Any]) -> None:
+        if prefix_ids:
+            section["id"] = f"{library}-{section['id']}"
+        for child in section["children"]:
+            update_section(child)
+
+    for category in data["categories"]:
+        category["library"] = library
+        if prefix_ids:
+            category["id"] = f"{library}-{category['id']}"
+        for section in category["sections"]:
+            update_section(section)
+
+
+def combine_libraries(dsa: dict[str, Any], lld: dict[str, Any]) -> dict[str, Any]:
+    add_library(dsa, "dsa")
+    add_library(lld, "lld", prefix_ids=True)
+    count_fields = ("categories", "sections", "questions", "codeBlocks", "tables", "paragraphs")
+    meta = {
+        "title": "Interview Vault",
+        "subtitle": "DSA algorithms, LLD patterns, questions & implementations",
+        "sources": [dsa["meta"]["source"], lld["meta"]["source"]],
+        "libraries": [
+            {
+                "id": "dsa",
+                "title": "DSA",
+                "description": "Data structures, algorithms, patterns, and implementations",
+            },
+            {
+                "id": "lld",
+                "title": "LLD",
+                "description": "Object-oriented design, patterns, and interview systems",
+            },
+        ],
+    }
+    for field in count_fields:
+        meta[field] = dsa["meta"][field] + lld["meta"][field]
+    return {"meta": meta, "categories": dsa["categories"] + lld["categories"]}
+
+
 def write_chapter_pages(data: dict[str, Any]) -> None:
     CHAPTERS_DIR.mkdir(parents=True, exist_ok=True)
     category_ids = {category["id"] for category in data["categories"]}
@@ -288,7 +330,7 @@ def write_chapter_pages(data: dict[str, Any]) -> None:
       content="{escape(title)} — concepts, questions, complexity analysis, and C++ implementations."
     />
     <meta name="theme-color" content="#0b1020" />
-    <title>{escape(title)} — DSA Vault</title>
+    <title>{escape(title)} — Interview Vault</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -297,7 +339,7 @@ def write_chapter_pages(data: dict[str, Any]) -> None:
     />
     <link rel="stylesheet" href="../src/styles.css" />
   </head>
-  <body data-category="{escape(category["id"])}">
+  <body data-category="{escape(category["id"])}" data-library="{escape(category["library"])}">
     <div id="app">
       <div class="boot-screen">
         <div class="boot-mark">DV</div>
@@ -315,9 +357,9 @@ def write_chapter_pages(data: dict[str, Any]) -> None:
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Review starred DSA concepts and implementations." />
+    <meta name="description" content="Review starred DSA and LLD concepts and implementations." />
     <meta name="theme-color" content="#0b1020" />
-    <title>Starred Review — DSA Vault</title>
+    <title>Starred Review — Interview Vault</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -341,11 +383,13 @@ def write_chapter_pages(data: dict[str, Any]) -> None:
 
 
 def main() -> None:
-    source = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_SOURCE
-    if not source.exists():
-        raise SystemExit(f"Source document not found: {source}")
+    dsa_source = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_DSA_SOURCE
+    lld_source = Path(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_LLD_SOURCE
+    for source in (dsa_source, lld_source):
+        if not source.exists():
+            raise SystemExit(f"Source document not found: {source}")
 
-    data = extract(source)
+    data = combine_libraries(extract(dsa_source), extract(lld_source))
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(
         json.dumps(data, ensure_ascii=False, separators=(",", ":")),
@@ -354,7 +398,7 @@ def main() -> None:
     write_chapter_pages(data)
     meta = data["meta"]
     print(
-        f"Extracted {meta['categories']} categories, {meta['sections']} sections, "
+        f"Extracted 2 libraries, {meta['categories']} chapters, {meta['sections']} sections, "
         f"{meta['questions']} questions, {meta['codeBlocks']} code blocks, "
         f"and {meta['tables']} tables; generated {meta['categories']} chapter pages"
     )

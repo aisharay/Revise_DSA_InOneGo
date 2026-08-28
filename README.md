@@ -1,8 +1,8 @@
-# DSA Vault
+# Interview Vault
 
-A searchable personal DSA handbook generated from `1. DSA (2).docx`. The site
-contains all document categories, sections, questions, code examples,
-complexity notes, and comparison tables.
+A searchable personal interview handbook generated from `1. DSA (2).docx` and
+`LLD.docx`. DSA and LLD are separate top-level libraries with their own
+chapters, sections, questions, code examples, and progress.
 
 **Live site:** https://aisharay.github.io/Revise_DSA_InOneGo/
 
@@ -32,10 +32,10 @@ site. The importer also generates one standalone page for every chapter in
 npm run extract
 ```
 
-To import another document:
+To import documents from other locations:
 
 ```powershell
-python scripts\extract_docx.py "C:\path\to\document.docx"
+python scripts\extract_docx.py "C:\path\to\dsa.docx" "C:\path\to\lld.docx"
 ```
 
 ## Production build
