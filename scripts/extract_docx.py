@@ -18,6 +18,11 @@ from docx.text.paragraph import Paragraph
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
 
+from dsa_overrides import (
+    DSA_CODE_OVERRIDES,
+    DSA_TEXT_REMOVALS,
+    DSA_TEXT_REPLACEMENTS,
+)
 from lld_pattern_overrides import PATTERN_SNIPPETS, TARGET_CATEGORY_PREFIXES
 
 
@@ -361,8 +366,96 @@ def convert_conceptual_blocks(data: dict[str, Any]) -> None:
             update(block)
 
 
-def format_dsa_code(data: dict[str, Any]) -> None:
-    """Apply a compact, consistent C++ style to every DSA code block."""
+def apply_dsa_code_overrides(data: dict[str, Any]) -> None:
+    """Replace audited DSA snippets while retaining their revision notes."""
+    sections: dict[str, dict[str, Any]] = {}
+
+    def collect(nodes: list[dict[str, Any]]) -> None:
+        for section in nodes:
+            sections[section["id"]] = section
+            collect(section["children"])
+
+    for category in data["categories"]:
+        if category["library"] == "dsa":
+            collect(category["sections"])
+
+    unknown = DSA_CODE_OVERRIDES.keys() - sections.keys()
+    if unknown:
+        raise ValueError(f"DSA overrides reference missing sections: {sorted(unknown)}")
+
+    unknown_text_sections = DSA_TEXT_REPLACEMENTS.keys() - sections.keys()
+    if unknown_text_sections:
+        raise ValueError(
+            f"DSA text replacements reference missing sections: {sorted(unknown_text_sections)}"
+        )
+
+    for section_id, replacements in DSA_TEXT_REPLACEMENTS.items():
+        section = sections[section_id]
+        for old_text, new_text in replacements.items():
+            matches = [
+                block
+                for block in section["blocks"]
+                if block.get("text") == old_text
+            ]
+            if len(matches) != 1:
+                raise ValueError(
+                    f"{section_id}: expected one exact text match for {old_text!r}, "
+                    f"found {len(matches)}"
+                )
+            matches[0]["text"] = new_text
+
+    unknown_removal_sections = DSA_TEXT_REMOVALS.keys() - sections.keys()
+    if unknown_removal_sections:
+        raise ValueError(
+            f"DSA text removals reference missing sections: {sorted(unknown_removal_sections)}"
+        )
+
+    for section_id, removals in DSA_TEXT_REMOVALS.items():
+        section = sections[section_id]
+        existing = {block.get("text") for block in section["blocks"]}
+        missing_removals = removals - existing
+        if missing_removals:
+            raise ValueError(
+                f"{section_id}: expected obsolete text fragments are missing: "
+                f"{sorted(missing_removals)}"
+            )
+        section["blocks"] = [
+            block for block in section["blocks"] if block.get("text") not in removals
+        ]
+
+    for section_id, corrected_blocks in DSA_CODE_OVERRIDES.items():
+        section = sections[section_id]
+        replacement = iter(corrected_blocks)
+        remaining = len(corrected_blocks)
+        rebuilt = []
+        last_code_output = None
+        for block in section["blocks"]:
+            if block["type"] != "code":
+                rebuilt.append(block)
+                continue
+            if remaining:
+                rebuilt.append({"type": "code", "text": next(replacement)})
+                remaining -= 1
+                last_code_output = len(rebuilt)
+
+        extra_blocks = [
+            {"type": "code", "text": code} for code in replacement
+        ]
+        if extra_blocks:
+            insert_at = last_code_output if last_code_output is not None else len(rebuilt)
+            rebuilt[insert_at:insert_at] = extra_blocks
+        section["blocks"] = rebuilt
+
+
+CLANG_FORMAT_STYLE = (
+    "{BasedOnStyle: Google, ColumnLimit: 120, IndentWidth: 4, "
+    "ContinuationIndentWidth: 4, AllowShortFunctionsOnASingleLine: Empty, "
+    "BinPackArguments: true, BinPackParameters: true, SortIncludes: Never}"
+)
+
+
+def format_cpp_code(source: str) -> str:
+    """Format one C++ snippet with the site's canonical style."""
     formatter = shutil.which("clang-format")
     if formatter is None:
         raise RuntimeError(
@@ -370,30 +463,28 @@ def format_dsa_code(data: dict[str, Any]) -> None:
             "Install dependencies with: python -m pip install -r requirements.txt"
         )
 
-    style = (
-        "{BasedOnStyle: Google, ColumnLimit: 120, IndentWidth: 4, "
-        "ContinuationIndentWidth: 4, AllowShortFunctionsOnASingleLine: Empty, "
-        "BinPackArguments: true, BinPackParameters: true, SortIncludes: Never}"
+    result = subprocess.run(
+        [formatter, f"--style={CLANG_FORMAT_STYLE}"],
+        input=source,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=False,
     )
+    if result.returncode:
+        raise RuntimeError(f"clang-format failed: {result.stderr.strip()}")
+    return result.stdout.rstrip()
+
+
+def format_dsa_code(data: dict[str, Any]) -> None:
+    """Apply a compact, consistent C++ style to every DSA code block."""
     for category in data["categories"]:
         if category["library"] != "dsa":
             continue
         for block in iter_category_blocks(category):
             if block["type"] != "code":
                 continue
-            result = subprocess.run(
-                [formatter, f"--style={style}"],
-                input=block["text"],
-                text=True,
-                encoding="utf-8",
-                capture_output=True,
-                check=False,
-            )
-            if result.returncode:
-                raise RuntimeError(
-                    f"clang-format failed in {category['id']}: {result.stderr.strip()}"
-                )
-            block["text"] = result.stdout.rstrip()
+            block["text"] = format_cpp_code(block["text"])
 
 
 def apply_lld_pattern_overrides(data: dict[str, Any]) -> None:
@@ -535,6 +626,7 @@ def main() -> None:
 
     data = combine_libraries(extract(dsa_source), extract(lld_source))
     convert_conceptual_blocks(data)
+    apply_dsa_code_overrides(data)
     format_dsa_code(data)
     apply_lld_pattern_overrides(data)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)

@@ -39,6 +39,17 @@ To import documents from other locations:
 python scripts\extract_docx.py "C:\path\to\dsa.docx" "C:\path\to\lld.docx"
 ```
 
+The DSA library includes an exhaustive reviewed-category manifest plus
+canonical corrections for sections that required changes. Validate generated
+content and executable edge cases with:
+
+```powershell
+python scripts\validate_dsa_overrides.py
+python scripts\validate_dsa_code.py
+python scripts\validate_dsa_edge_cases.py
+python scripts\validate_lld_patterns.py --compile
+```
+
 ## Production build
 
 ```powershell
