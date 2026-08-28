@@ -1,4 +1,5 @@
 const app = document.querySelector("#app");
+const appBase = new URL("../", import.meta.url).pathname.replace(/\/$/, "");
 
 const state = {
   data: null,
@@ -121,7 +122,7 @@ function getCategory() {
 function categoryUrl(categoryId, sectionId = "", starredOnly = false) {
   const query = starredOnly ? "?starred=1" : "";
   const suffix = sectionId ? `#${encodeURIComponent(sectionId)}` : "";
-  return `/chapters/${categoryId}.html${query}${suffix}`;
+  return `${appBase}/chapters/${categoryId}.html${query}${suffix}`;
 }
 
 function allSections(nodes) {
@@ -166,7 +167,7 @@ function renderShell() {
       <button class="icon-button mobile-menu" id="menu-button" aria-label="Open navigation">
         ${icons.menu}
       </button>
-      <a class="brand" href="#" aria-label="DSA Vault home">
+      <a class="brand" href="${appBase}/" aria-label="DSA Vault home">
         <span class="brand-mark">&lt;/&gt;</span>
         <span>DSA<span>Vault</span></span>
       </a>
@@ -199,7 +200,7 @@ function renderShell() {
           </button>
         </div>
         <nav class="category-nav">
-          <a class="category-link home-link" href="/">
+          <a class="category-link home-link" href="${appBase}/">
             <span class="category-symbol">⌂</span>
             <span class="category-name">Start here</span>
           </a>
@@ -739,10 +740,9 @@ function renderSearch(query) {
 
 async function init() {
   try {
-    let response = await fetch("/data/dsa-content.json");
-    if (!response.ok) {
-      response = await fetch("/public/data/dsa-content.json");
-    }
+    const response = await fetch(
+      new URL("../public/data/dsa-content.json", import.meta.url),
+    );
     if (!response.ok) throw new Error(`Content request failed: ${response.status}`);
     state.data = await response.json();
     const requestedCategory = document.body.dataset.category;

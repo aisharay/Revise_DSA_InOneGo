@@ -295,7 +295,7 @@ def write_chapter_pages(data: dict[str, Any]) -> None:
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/src/styles.css" />
+    <link rel="stylesheet" href="../src/styles.css" />
   </head>
   <body data-category="{escape(category["id"])}">
     <div id="app">
@@ -304,7 +304,7 @@ def write_chapter_pages(data: dict[str, Any]) -> None:
         <p>Opening {escape(title)}…</p>
       </div>
     </div>
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="../src/main.js"></script>
   </body>
 </html>
 """
@@ -324,7 +324,7 @@ def write_chapter_pages(data: dict[str, Any]) -> None:
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/src/styles.css" />
+    <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body data-view="starred">
     <div id="app">
@@ -333,7 +333,7 @@ def write_chapter_pages(data: dict[str, Any]) -> None:
         <p>Preparing your review list…</p>
       </div>
     </div>
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="./src/main.js"></script>
   </body>
 </html>
 """

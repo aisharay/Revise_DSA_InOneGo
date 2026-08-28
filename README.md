@@ -4,6 +4,8 @@ A searchable personal DSA handbook generated from `1. DSA (2).docx`. The site
 contains all document categories, sections, questions, code examples,
 complexity notes, and comparison tables.
 
+**Live site:** https://aisharay.github.io/Revise_DSA_InOneGo/
+
 ## Run locally
 
 ```powershell
