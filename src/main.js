@@ -707,7 +707,7 @@ function bindContentEvents() {
         state.completed.add(id);
       }
       localStorage.setItem("dsa-completed", JSON.stringify([...state.completed]));
-      renderShell();
+      renderShellWithoutScrolling();
     });
   });
 
@@ -720,7 +720,7 @@ function bindContentEvents() {
         state.starred.add(id);
       }
       localStorage.setItem("dsa-starred", JSON.stringify([...state.starred]));
-      renderShell();
+      renderShellWithoutScrolling();
     });
   });
 
@@ -733,6 +733,14 @@ function bindContentEvents() {
         card.classList.contains("collapsed") ? "Expand topic" : "Collapse topic",
       );
     });
+  });
+}
+
+function renderShellWithoutScrolling() {
+  const scrollPosition = window.scrollY;
+  renderShell();
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: scrollPosition, behavior: "instant" });
   });
 }
 
